@@ -2,8 +2,8 @@
 # Copyright 2020
 # Han Boetes <hboetes@gmail.com>
 # This script generates a csv file which you can bulk import with FreePBX and a qr-code file.
-# With the csv you can set up a working extension with a secure password
-# The qr-code the user can use to set up sipnetic
+# With the csv you can set up a working extension with a strong password
+# The qr-code the user can use to set up sipnetic (https://www.sipnetic.com/)
 # I've set up a new working softphone on android in less than a minute.
 
 server="sip.example.com"
