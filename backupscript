@@ -1,0 +1,17 @@
+#!/bin/sh
+# Copyright 2020 Diederik de Groot <dkgroot@talon.nl>
+currdate=$(date +"%Y-%m-%d_%H%M")
+backupdir=/root/backup
+if ! [ -d $backupdir ]; then
+    if ! mkdir -p $backupdir; then
+        echo "$0: Can't create backupdir $backupdir" >&2
+        exit 1
+    fi
+fi
+cd $backupdir
+tar --exclude=/var/lib/asterisk/moh --exclude=/var/lib/asterisk/sounds -czf $backupdir/fsbackup.$currdate.tar.gz /etc/asterisk /var/spool/asterisk /var/lib/asterisk/
+cp /var/lib/asterisk/astdb.sqlite3 $backupdir/astdb.$currdate.sqlite3
+mysqldump asterisk > $backupdir/asterisk.mysql.$currdate.sql
+gzip *.sqlite3 *.sql
+# move to other machine (oldest)
+find $backupdir -ctime -7 # -delete
