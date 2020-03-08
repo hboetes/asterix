@@ -1,6 +1,7 @@
 #!/bin/sh
 
 # Improved version of the script found on http://voipbl.org/
+# Original by Graham Barnett, whom I can't find any contact details of. 
 
 # Create a cronjob like this:
 # 0 */4 * * * /usr/local/sbin/voipbl
