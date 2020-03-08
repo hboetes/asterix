@@ -1,0 +1,37 @@
+#!/bin/sh
+
+# Improved version of the script found on http://voipbl.org/
+
+# Create a cronjob like this:
+# 0 */4 * * * /usr/local/sbin/voipbl
+
+URL="http://www.voipbl.org/update/"
+BL="/etc/fail2ban/voipbl.txt"
+
+# exit on any error.
+set -e
+echo "Downloading rules from VoIP Blacklist"
+wget -q $URL -O $BL
+
+echo "Loading rules..."
+
+# Check if rule set exists and create one if required
+ipset -exist -q create voipbl iphash
+
+# Check if voipbl rule exists in iptables
+if ! /sbin/iptables -w --check INPUT -m set --match-set voipbl src -j DROP > /dev/null 2>&1; then
+    /sbin/iptables -I INPUT 1 -m set --match-set voipbl src -j DROP
+fi
+
+# Create a new empty temporary chain
+ipset -q destroy voipbl_temp || :
+ipset create voipbl_temp iphash hashsize 131072 maxelem 260000
+
+for i in $(egrep -v '(#|0\.0\.0\.0)' $BL); do
+    /usr/sbin/ipset add voipbl_temp $i
+done
+
+ipset swap voipbl_temp voipbl
+ipset -exist -q destroy voipbl_temp
+
+echo "Done! Rules loaded"
