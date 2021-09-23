@@ -1,23 +1,44 @@
 #!/bin/sh
-
 # Improved version of the script found on http://voipbl.org/
-# Original by Graham Barnett, whom I can't find any contact details of. 
+# Original by Graham Barnett, of whom I can't find any contact details.
 
 # Create a cronjob like this:
 # 0 */4 * * * /usr/local/sbin/voipbl
 
 URL="http://www.voipbl.org/update/"
 BL="/etc/fail2ban/voipbl.txt"
+RP="/etc/fail2ban/repeaters.txt"
+DROPBL="/etc/fail2ban/drop.txt"
+DROPURL="https://www.spamhaus.org/drop/drop.txt"
+EDROPBL="/etc/fail2ban/edrop.txt"
+EDROPURL="https://www.spamhaus.org/drop/edrop.txt"
+JOINEDBL="/etc/fail2ban/joinedbl.txt"
+
+# Checking for repeat offenders.
+awk '/Ban/ {print $NF}' /var/log/fail2ban.log|sort|uniq -c|sort|grep -v ' [1-3] '|tail -n 10|awk '{print $2}' >> $RP
+# Remove duplicates
+sort $RP | uniq > ${RP}.tmp
+mv ${RP}.tmp $RP
 
 # exit on any error.
 set -e
+
 echo "Downloading rules from VoIP Blacklist"
 wget -q $URL -O $BL
+
+#echo "Downloading rules from Drop Blacklist"
+wget -q $DROPURL -O $DROPBL
+
+#echo "Downloading rules from EDrop Blacklist"
+wget -q $EDROPURL -O $EDROPBL
+
+echo "Joining all rules."
+cat $RP $BL $DROPBL $EDROPBL | sed -e 's|;.*||' | egrep -hv '(#|0\.0\.0\.0)' | grep -v '^$' | sort | uniq > $JOINEDBL
 
 echo "Loading rules..."
 
 # Check if rule set exists and create one if required
-ipset -exist -q create voipbl iphash
+ipset -exist -q create voipbl hash:net || :
 
 # Check if voipbl rule exists in iptables
 if ! /sbin/iptables -w --check INPUT -m set --match-set voipbl src -j DROP > /dev/null 2>&1; then
@@ -26,13 +47,13 @@ fi
 
 # Create a new empty temporary chain
 ipset -q destroy voipbl_temp || :
-ipset create voipbl_temp iphash hashsize 131072 maxelem 260000
+ipset create voipbl_temp hash:net hashsize 131072 maxelem 2600000
 
-for i in $(egrep -v '(#|0\.0\.0\.0)' $BL); do
-    /usr/sbin/ipset add voipbl_temp $i
+for i in $(cat $JOINEDBL); do
+    /usr/sbin/ipset add voipbl_temp $i >& /dev/null || :
 done
 
 ipset swap voipbl_temp voipbl
-ipset -exist -q destroy voipbl_temp
+ipset -exist -q destroy voipbl_temp || :
 
 echo "Done! Rules loaded"
