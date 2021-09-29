@@ -40,7 +40,10 @@ echo "Loading rules..."
 # Check if rule set exists and create one if required
 ipset -exist -q create voipbl hash:net || :
 
-# Check if voipbl rule exists in iptables
+# Check if voipbl rule exists in iptables. With the latest version of freepbx this is no longer
+# required, you can add this rule to the custom rules in the freepbx firewall settings. See also:
+#   https://wiki.freepbx.org/display/FPG/Firewall+Custom+Rules
+# And comment out the next three lines.
 if ! /sbin/iptables -w --check INPUT -m set --match-set voipbl src -j DROP > /dev/null 2>&1; then
     /sbin/iptables -I INPUT 1 -m set --match-set voipbl src -j DROP
 fi
