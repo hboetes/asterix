@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/bin/zsh
+
 # Improved version of the script found on http://voipbl.org/
-# Original by Graham Barnett, of whom I can't find any contact details.
 
 # Create a cronjob like this:
 # 0 */4 * * * /usr/local/sbin/voipbl
@@ -12,6 +12,7 @@ DROPBL="/etc/fail2ban/drop.txt"
 DROPURL="https://www.spamhaus.org/drop/drop.txt"
 EDROPBL="/etc/fail2ban/edrop.txt"
 EDROPURL="https://www.spamhaus.org/drop/edrop.txt"
+CHINA="/etc/fail2ban/china.txt"
 JOINEDBL="/etc/fail2ban/joinedbl.txt"
 
 # Checking for repeat offenders.
@@ -33,30 +34,31 @@ wget -q $DROPURL -O $DROPBL
 wget -q $EDROPURL -O $EDROPBL
 
 echo "Joining all rules."
-cat $RP $BL $DROPBL $EDROPBL | sed -e 's|;.*||' | egrep -hv '(#|0\.0\.0\.0)' | grep -v '^$' | sort | uniq > $JOINEDBL
+cat $RP $BL $DROPBL $EDROPBL $CHINA | sed -e 's|;.*||;s|/32||;s| *$||' | egrep -hv '(#|0\.0\.0\.0)' | grep -v '^$' | sort | uniq > $JOINEDBL
 
 echo "Loading rules..."
 
-# Check if rule set exists and create one if required
-ipset -exist -q create voipbl hash:net || :
+# If the voipbl list does not exists, create it and fill it with $JOINEDBL
+if ipset -quiet create voipbl hash:net hashsize 131072 maxelem 2600000; then
+    for i in $(< $JOINEDBL); do
+        /usr/sbin/ipset add voipbl $i >& /dev/null || :
+    done
+else # If the voipbl list already exists, remove old entries and add new ones. Usually much faster.
+    CURRENT=$(mktemp)
+    ipset list voipbl | grep -v ':' | sort | uniq > $CURRENT
 
-# Check if voipbl rule exists in iptables. With the latest version of freepbx this is no longer
-# required, you can add this rule to the custom rules in the freepbx firewall settings. See also:
-#   https://wiki.freepbx.org/display/FPG/Firewall+Custom+Rules
-# And comment out the next three lines.
-if ! /sbin/iptables -w --check INPUT -m set --match-set voipbl src -j DROP > /dev/null 2>&1; then
-    /sbin/iptables -I INPUT 1 -m set --match-set voipbl src -j DROP
+    diff -w $CURRENT $JOINEDBL | while read io entry; do
+        case $io in
+            '>')
+                ipset add voipbl $entry
+            ;;
+            '<')
+                ipset del voipbl $entry
+            ;;
+        esac
+    done
+
+    rm $CURRENT
 fi
-
-# Create a new empty temporary chain
-ipset -q destroy voipbl_temp || :
-ipset create voipbl_temp hash:net hashsize 131072 maxelem 2600000
-
-for i in $(cat $JOINEDBL); do
-    /usr/sbin/ipset add voipbl_temp $i >& /dev/null || :
-done
-
-ipset swap voipbl_temp voipbl
-ipset -exist -q destroy voipbl_temp || :
 
 echo "Done! Rules loaded"
